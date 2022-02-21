@@ -122,7 +122,19 @@ def minimumDistances(verts1_i, verts2_i, verts, object):
                 dist_min = dist
                 closest_vert = vert2_index
         minDist[vert1_index] = dist_min
-    return minDist  
+    return minDist 
+
+# Finds the maximum distance between each vert from verts1_i and verts2_i
+def maximumDistance(verts, object):
+    maxDist = 0
+    for vert1 in verts:
+        vert1_local = localC(vert1, object)
+        for vert2 in verts:
+            vert2_local = localC(vert2, object)
+            dist = (vert1_local - vert2_local).length
+            if dist > maxDist:
+                maxDist = dist
+    return maxDist 
 
 # Function to describe the indentation. 
 # Goes from 1 at x = 0, to 0 at x = indentRange
@@ -142,6 +154,16 @@ def volumeFunction(x, volumeRamp):
         return a * (x - volumeRamp) * (x - volumeRamp) + 1
     else:
         return 1
+
+
+def distributionFunction(x, dist_total, dist_max, indentRange, indentDepth):
+    a = (dist_total + indentDepth * dist_max) / ( (indentRange**3)/3 - 2*(indentRange**2) + indentRange * dist_max)
+    print(a)
+    c = -indentDepth + a * indentRange
+    if x <= indentRange:
+        return a * (x - indentRange)**2 + c
+    else:
+        return -indentDepth + a * indentRange
     
     
 def deform(displace_increase=0.02, indent_smoothness=0.95, indent_range=1.2, calculate_indent_range=True, delta_initial=5.0, delta_increase=0.1, volume_preservation=1.0, volume_ramp=0.8):
@@ -277,18 +299,20 @@ def deform(displace_increase=0.02, indent_smoothness=0.95, indent_range=1.2, cal
     print("Getting the shortest distance")
     minDist = minimumDistances(outside_verts, boundaryVerts_so, verts1, softObject)
 
+    maxDist = maximumDistance(verts1, softObject)
+
     shortest_dist = inf
     for dist in minDist.values():
         if dist < shortest_dist:
                 shortest_dist = dist
     print(shortest_dist)
 
-    if calculate_indent_range:
-        indent_range = sqrt(dist_total / len(inside_verts_new) )
+    indent_depth = dist_total / len(inside_verts_new)
 
-    print("Getting inverse square factor and adding elasticity")
-    inverse_square_sum = 0
-    for vert1_index in outside_verts.copy():
+    if calculate_indent_range:
+        indent_range = sqrt(indent_depth)
+
+    for vert1_index in outside_verts:
         vert1 = localC(verts1[vert1_index], softObject)
         dist_min = inf
         closest_vert = vert1_index
@@ -300,38 +324,7 @@ def deform(displace_increase=0.02, indent_smoothness=0.95, indent_range=1.2, cal
                 closest_vert = vert2_index
         if dist_min <= indent_range:
             closest_vert_move = (sk.data[closest_vert].co - sk.relative_key.data[closest_vert].co)
-            #a = 1 / (dist_min * dist_min)
-            #b = 1 / (dist_min * dist_min) + 1 / ( (elasticity-dist_min) * (elasticity-dist_min) )
-            move_dist = indentFunction(dist_min,indent_range, indent_smoothness) 
-            
-            #move_dist = elasticity_factor * closest_vert_move * 1 / (1 + (dist_min-shortest_dist) * (dist_min-shortest_dist))
-            #move_dist = elasticity_factor * 1 / (shortest_dist + dist_min * dist_min)
-            #normal = softObject.data.vertices[vert1_index].normal
-            newPos = sk.data[vert1_index].co  + move_dist * closest_vert_move
-            #softObject.data.vertices[vert1_index].co = newPos
-            sk.data[vert1_index].co = newPos
-            #dist_total = dist_total + move_dist
-            outside_verts.remove(vert1_index)
-            
-        else:
-            #inverse_square_sum += 1 / ( 1 + (dist_min-shortest_dist) * (dist_min-shortest_dist) )
-            inverse_square_sum += volumeFunction(dist_min-indent_range, volume_ramp)
-            #inverse_square_sum += 1 / (shortest_dist + dist_min * dist_min)
-    dist_total = dist_total * volume_preservation
-    if volume_preservation > 0:
-        x_fac = dist_total / inverse_square_sum # The factor by which the inverse square of each distance is multiplied so that the total is always dist_total
-        print("Adding back volume")
-        print(dist_total)
-        print(x_fac)
+            move_dist = distributionFunction(dist_min, dist_total, dist_max, indentRange, indentDepth) 
 
-        for vert1_index in outside_verts:
-            vert1_global = verts1[vert1_index]
-            vert1 = localC(verts1[vert1_index], softObject)
-            dist_min = minDist[vert1_index]
-            #move_dist = x_fac * 1 / (1 + (dist_min-shortest_dist) * (dist_min-shortest_dist))
-            move_dist = x_fac * volumeFunction(dist_min-indent_range, volume_ramp)
-            #move_dist = x_fac * 1 / (shortest_dist + dist_min * dist_min)
-            normal = softObject.data.vertices[vert1_index].normal
-            newPos = sk.data[vert1_index].co + move_dist * normal
+            newPos = sk.data[vert1_index].co  + move_dist * closest_vert_move
             sk.data[vert1_index].co = newPos
-            #softObject.data.vertices[vert1_index].co = newPos
